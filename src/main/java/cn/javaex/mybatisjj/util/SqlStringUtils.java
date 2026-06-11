@@ -1,0 +1,163 @@
+package cn.javaex.mybatisjj.util;
+
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+
+/**
+ * Mybatisjj专用字符串工具类
+ * 
+ * @author 陈霓清
+ */
+public class SqlStringUtils {
+	
+	private static final char SEPARATOR = '_';
+	
+    /**
+     * 首字母转大写
+     *
+     * <pre>
+     * StringUtils.capitalize(null)  = null
+     * StringUtils.capitalize("")    = ""
+     * StringUtils.capitalize("cat") = "Cat"
+     * StringUtils.capitalize("cAt") = "CAt"
+     * </pre>
+     */
+	public static String capitalize(String str) {
+		int strLen;
+        if (str == null || (strLen = str.length()) == 0) {
+            return str;
+        }
+        return new StringBuffer(strLen)
+            .append(Character.toTitleCase(str.charAt(0)))
+            .append(str.substring(1))
+            .toString();
+	}
+	
+	/**
+	 * 所有字母转小写，单词之间用下划线分隔
+	 * 
+	 * <pre>
+     * StringUtils.toUnderlineName(myTest)  = my_test
+     * </pre>
+	 * 
+	 * @param text
+	 * @return
+	 */
+	public static String toUnderlineName(String text) {
+		if (isEmpty(text)) {
+			return text;
+		}
+		
+		StringBuilder sb = new StringBuilder();
+		boolean upperCase = false;
+		for (int i=0; i<text.length(); i++) {
+			char c = text.charAt(i);
+			
+			boolean nextUpperCase = true;
+			
+			if (i<(text.length()-1)) {
+				nextUpperCase = Character.isUpperCase(text.charAt(i + 1));
+			}
+			
+			if ((i>=0) && Character.isUpperCase(c)) {
+				if (!upperCase || !nextUpperCase) {
+					if (i>0) {
+						sb.append(SEPARATOR);
+					}
+				}
+				upperCase = true;
+			} else {
+				upperCase = false;
+			}
+			
+			sb.append(Character.toLowerCase(c));
+		}
+		
+		return sb.toString();
+	}
+	
+    // Empty checks
+    //-----------------------------------------------------------------------
+    /**
+     * <p>Checks if a String is empty ("") or null.</p>
+     *
+     * <pre>
+     * StringUtils.isEmpty(null)      = true
+     * StringUtils.isEmpty("")        = true
+     * StringUtils.isEmpty(" ")       = false
+     * StringUtils.isEmpty("bob")     = false
+     * StringUtils.isEmpty("  bob  ") = false
+     * </pre>
+     *
+     * <p>NOTE: This method changed in Lang version 2.0.
+     * It no longer trims the String.
+     * That functionality is available in isBlank().</p>
+     *
+     * @param str  the String to check, may be null
+     * @return <code>true</code> if the String is empty or null
+     */
+    public static boolean isEmpty(String str) {
+        return str == null || str.length() == 0;
+    }
+	
+    /**
+     * <p>Checks if a String is not empty ("") and not null.</p>
+     *
+     * <pre>
+     * StringUtils.isNotEmpty(null)      = false
+     * StringUtils.isNotEmpty("")        = false
+     * StringUtils.isNotEmpty(" ")       = true
+     * StringUtils.isNotEmpty("bob")     = true
+     * StringUtils.isNotEmpty("  bob  ") = true
+     * </pre>
+     *
+     * @param str  the String to check, may be null
+     * @return <code>true</code> if the String is not empty and not null
+     */
+    public static boolean isNotEmpty(String str) {
+        return !isEmpty(str);
+    }
+    
+    /**
+     * 转义 SQL 字符串字面量中的单引号，避免租户值、逻辑删除值等内部上下文破坏 SQL
+     * @param value 原始值
+     * @return 转义后的值
+     */
+    public static String escapeSqlLiteral(Object value) {
+        return value == null ? null : String.valueOf(value).replace("'", "''");
+    }
+
+	/**
+	 * 获取表名或字段名
+	 * @param <A>
+	 * @param field
+	 * @param annotationType
+	 * @return
+	 */
+	public static <A extends Annotation> String getTableOrColumnName(Field field, Class<A> annotationType) {
+		A ann = field.getAnnotation(annotationType);
+		String configured = (ann == null) ? null : getAnnotationStringValue(ann, "value");
+		return isEmpty(configured) ? toUnderlineName(field.getName()) : configured;
+	}
+
+	/**
+	 * 获取注解的value的值
+	 * @param ann
+	 * @param methodName
+	 * @return
+	 */
+	private static String getAnnotationStringValue(Annotation ann, String methodName) {
+		try {
+			Method m = ann.annotationType().getMethod(methodName);
+			Object v = m.invoke(ann);
+			return (v == null) ? null : String.valueOf(v);
+		} catch (NoSuchMethodException e) {
+			// 没有 value() 就当没配置
+			return null;
+		} catch (Exception e) {
+			throw new RuntimeException(
+					"Read annotation @" + ann.annotationType().getName() + " method " + methodName + " failed", e);
+		}
+	}
+}
