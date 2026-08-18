@@ -2,7 +2,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>cn.javaex</groupId>
 	<artifactId>mybatisjj</artifactId>
-	<version>5.0.0</version>
+	<version>5.1.0</version>
 	<name>mybatis-jj</name>
 	<url>https://www.javaex.cn</url>
 	<description>MyBatis-JJ is an enhanced multi-database toolkit for MyBatis</description>

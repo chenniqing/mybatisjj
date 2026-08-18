@@ -67,17 +67,55 @@ public class SqlInsertProvider extends EntityProvider implements ProviderMethodR
 		if (list == null || list.isEmpty()) {
 			throw new IllegalArgumentException("Parameter 'list' must not be empty.");
 		}
+
+		Object firstEntity = list.get(0);
+		if (firstEntity == null) {
+			throw new IllegalArgumentException("Entity in insert batch must not be null.");
+		}
+		Class<?> clazz = firstEntity.getClass();
+		for (Object entity : list) {
+			if (entity == null) {
+				throw new IllegalArgumentException("Entity in insert batch must not be null.");
+			}
+			if (!clazz.equals(entity.getClass())) {
+				throw new IllegalArgumentException("All entities in the same insert batch must have the same type.");
+			}
+		}
 		
-		Class<?> clazz = list.get(0).getClass();
 		// 获取表实体信息
 		TableEntity tableEntity = super.getTableEntity(clazz);
 		// 获取表的所有字段
 		List<TableColumnEntity> tableColumnEntityList = tableEntity.getTableColumnEntityList();
 		
-		// 构造所有列名
-		List<String> columnNames = new ArrayList<>();
+		// 仅保留当前批次至少有一条数据不为空的列，整批为空的列交给数据库默认值处理
+		List<String> columnNames = new ArrayList<>(tableColumnEntityList.size());
+		List<TableColumnEntity> insertColumnEntityList = new ArrayList<>(tableColumnEntityList.size());
+		List<Field> insertFieldList = new ArrayList<>(tableColumnEntityList.size());
 		for (TableColumnEntity tableColumnEntity : tableColumnEntityList) {
-			columnNames.add(tableColumnEntity.getColumn());
+			String fieldName = tableColumnEntity.getField();
+			try {
+				Field entityField = ReflectiveUtils.findField(clazz, fieldName);
+				entityField.setAccessible(true);
+				boolean hasNonNullValue = false;
+				for (Object entity : list) {
+					if (entityField.get(entity) != null) {
+						hasNonNullValue = true;
+						break;
+					}
+				}
+				if (!hasNonNullValue) {
+					continue;
+				}
+
+				columnNames.add(tableColumnEntity.getColumn());
+				insertColumnEntityList.add(tableColumnEntity);
+				insertFieldList.add(entityField);
+			} catch (NoSuchFieldException | IllegalAccessException e) {
+				throw new IllegalStateException("Error processing field: " + fieldName, e);
+			}
+		}
+		if (columnNames.isEmpty()) {
+			throw new IllegalArgumentException("At least one field must have a non-null value for batch insert.");
 		}
 		
 		StringBuilder sqlBuilder = new StringBuilder();
@@ -85,25 +123,23 @@ public class SqlInsertProvider extends EntityProvider implements ProviderMethodR
 		sqlBuilder.append("(").append(String.join(", ", columnNames)).append(") VALUES ");
 		
 		// 构造每条记录的值
-		List<String> valueRows = new ArrayList<>();
+		List<String> valueRows = new ArrayList<>(list.size());
 		for (int i = 0; i < list.size(); i++) {
 			Object entity = list.get(i);
-			List<String> valuePlaceholders = new ArrayList<>();
-			for (TableColumnEntity tableColumnEntity : tableColumnEntityList) {
+			List<String> valuePlaceholders = new ArrayList<>(insertColumnEntityList.size());
+			for (int j = 0; j < insertColumnEntityList.size(); j++) {
+				TableColumnEntity tableColumnEntity = insertColumnEntityList.get(j);
 				String field = tableColumnEntity.getField();
 				try {
-					// 使用反射获取当前字段值
-					Field entityField = ReflectiveUtils.findField(clazz, field);
-					entityField.setAccessible(true);
-					Object fieldValue = entityField.get(entity);
-					if (fieldValue != null) {
-						valuePlaceholders.add("#{list[" + i + "]." + field + "}");
+					Object fieldValue = insertFieldList.get(j).get(entity);
+					// 当前行字段为空时显式使用数据库默认值，保证所有行共用同一列集合
+					if (fieldValue == null) {
+						valuePlaceholders.add("DEFAULT");
 					} else {
-						valuePlaceholders.add("null");
+						valuePlaceholders.add("#{list[" + i + "]." + field + "}");
 					}
-				} catch (NoSuchFieldException | IllegalAccessException e) {
-					e.printStackTrace();
-					throw new RuntimeException("Error processing field: " + field, e);
+				} catch (IllegalAccessException e) {
+					throw new IllegalStateException("Error reading field: " + field, e);
 				}
 			}
 			valueRows.add("(" + String.join(", ", valuePlaceholders) + ")");

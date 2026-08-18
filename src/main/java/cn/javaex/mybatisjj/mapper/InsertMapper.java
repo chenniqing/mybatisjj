@@ -29,6 +29,6 @@ public interface InsertMapper<T> {
 	 * @return
 	 */
 	@InsertProvider(type = SqlInsertProvider.class, method = "insertBatch")
-	int insertBatch(@Param("list") List<?> list);
+	int insertBatch(@Param("list") List<T> list);
 	
 }

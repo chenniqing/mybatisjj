@@ -14,7 +14,6 @@ import org.apache.ibatis.jdbc.SQL;
 
 import cn.javaex.mybatisjj.basic.annotation.ExcludeTableColumn;
 import cn.javaex.mybatisjj.basic.annotation.TableColumn;
-import cn.javaex.mybatisjj.basic.annotation.TableLogic;
 import cn.javaex.mybatisjj.basic.annotation.TenantId;
 import cn.javaex.mybatisjj.model.entity.EntityMeta;
 import cn.javaex.mybatisjj.model.query.Wrapper;
@@ -214,19 +213,15 @@ public class SqlSelectProvider extends EntityProvider implements ProviderMethodR
 		String having = wrapper != null ? wrapper.getHavingClause() : "";
 		String last = wrapper != null ? wrapper.getLastClause() : "";
 		
-		// 获取所有属性
-		List<Field> allFields = ReflectiveUtils.getAllFields(entityType);
-		// 逻辑删除处理
+		// 逻辑删除处理统一走元数据解析，避免 Wrapper 查询绕过类级禁用注解
 		String logicDeleteCondition = "";
-		Optional<Field> logicDeleteFieldOpt = allFields.stream()
-				.filter(ReflectiveUtils::isTableField)
-				.filter(field -> field.isAnnotationPresent(TableLogic.class))
-				.findFirst();
+		Optional<Field> logicDeleteFieldOpt = super.getLogicDeleteField(entityType);
 		if (logicDeleteFieldOpt.isPresent()) {
 			logicDeleteCondition = super.getLogicDeleteCondition(logicDeleteFieldOpt.get());
 		}
 		// 租户处理
 		String tenantCondition = "";
+		List<Field> allFields = ReflectiveUtils.getAllFields(entityType);
 		Optional<Field> tenantFieldOpt = allFields.stream()
 				.filter(ReflectiveUtils::isTableField)
 				.filter(field -> field.isAnnotationPresent(TenantId.class))

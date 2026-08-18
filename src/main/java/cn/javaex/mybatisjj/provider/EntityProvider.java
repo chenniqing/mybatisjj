@@ -15,6 +15,7 @@ import java.util.stream.IntStream;
 
 import org.apache.ibatis.builder.annotation.ProviderContext;
 
+import cn.javaex.mybatisjj.basic.annotation.DisableLogicDelete;
 import cn.javaex.mybatisjj.basic.annotation.ExcludeTableColumn;
 import cn.javaex.mybatisjj.basic.annotation.TableColumn;
 import cn.javaex.mybatisjj.basic.annotation.TableId;
@@ -107,6 +108,27 @@ public class EntityProvider {
 		Class<?> entityType = this.getEntityType(providerContext.getMapperType());
 		return ENTITY_META_CACHE.computeIfAbsent(entityType, this::buildEntityMeta);
 	}
+
+	/**
+	 * 解析实体实际生效的逻辑删除字段
+	 *
+	 * 类级 {@link DisableLogicDelete} 的优先级高于字段级 {@link TableLogic}，
+	 * 因此子类可以显式关闭父类提供的逻辑删除能力，实体没有逻辑删除字段时，
+	 * 无论是否标注禁用注解都安全返回空结果
+	 *
+	 * @param entityType 实体类型
+	 * @return 实际生效的逻辑删除字段；未启用逻辑删除时为空
+	 */
+	protected Optional<Field> getLogicDeleteField(Class<?> entityType) {
+		if (entityType.isAnnotationPresent(DisableLogicDelete.class)) {
+			return Optional.empty();
+		}
+
+		return ReflectiveUtils.getAllFields(entityType).stream()
+				.filter(ReflectiveUtils::isTableField)
+				.filter(field -> field.isAnnotationPresent(TableLogic.class))
+				.findFirst();
+	}
 	
 	/**
 	 * 构建实体公共元数据，统一放入缓存复用
@@ -117,12 +139,9 @@ public class EntityProvider {
 		String tableName = this.getTableName(entityType);    // 获取表名
 		String tableId = this.getTableId(entityType);        // 获取主键字段名
 		
-		List<Field> allFields = ReflectiveUtils.getAllFields(entityType);
 		// 逻辑删除
-		Optional<Field> logicDeleteFieldOpt = allFields.stream()
-				.filter(ReflectiveUtils::isTableField)
-				.filter(field -> field.isAnnotationPresent(TableLogic.class))
-				.findFirst();
+		Optional<Field> logicDeleteFieldOpt = this.getLogicDeleteField(entityType);
+		List<Field> allFields = ReflectiveUtils.getAllFields(entityType);
 		// 租户处理
 		Optional<Field> tenantFieldOpt = allFields.stream()
 				.filter(ReflectiveUtils::isTableField)

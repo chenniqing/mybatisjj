@@ -114,12 +114,8 @@ public class SqlDeleteProvider extends EntityProvider implements ProviderMethodR
 		Class<?> entityType = super.getEntityType(providerContext.getMapperType());
 		String tableName = super.getTableName(entityType);
 		
-		// 查找逻辑删除字段
-		List<Field> allFields = ReflectiveUtils.getAllFields(entityType);
-		Optional<Field> logicDeleteFieldOpt = allFields.stream()
-				.filter(ReflectiveUtils::isTableField)
-				.filter(field -> field.isAnnotationPresent(TableLogic.class))
-				.findFirst();
+		// 统一解析逻辑删除元数据，确保类级禁用注解对条件删除同样生效
+		Optional<Field> logicDeleteFieldOpt = super.getLogicDeleteField(entityType);
 		
 		if (logicDeleteFieldOpt.isPresent()) {
 			Field logicField = logicDeleteFieldOpt.get();
@@ -149,18 +145,13 @@ public class SqlDeleteProvider extends EntityProvider implements ProviderMethodR
 	 * @return
 	 */
 	private String buildWhereClause(Class<?> entityType, Wrapper<?> wrapper, boolean includeLogicDelete, boolean includeTenant) {
-		List<Field> allFields = ReflectiveUtils.getAllFields(entityType);
-		
 		// Wrapper自身where条件
 		String where = wrapper != null && wrapper.getWhereClause() != null ? wrapper.getWhereClause().trim() : "";
 		
 		// 逻辑删除条件
 		String logicDeleteCondition = "";
 		if (includeLogicDelete) {
-			Optional<Field> logicDeleteFieldOpt = allFields.stream()
-					.filter(ReflectiveUtils::isTableField)
-					.filter(field -> field.isAnnotationPresent(TableLogic.class))
-					.findFirst();
+			Optional<Field> logicDeleteFieldOpt = super.getLogicDeleteField(entityType);
 			if (logicDeleteFieldOpt.isPresent()) {
 				logicDeleteCondition = super.getLogicDeleteCondition(logicDeleteFieldOpt.get());
 			}
@@ -169,6 +160,7 @@ public class SqlDeleteProvider extends EntityProvider implements ProviderMethodR
 		// 租户条件
 		String tenantCondition = "";
 		if (includeTenant) {
+			List<Field> allFields = ReflectiveUtils.getAllFields(entityType);
 			Optional<Field> tenantFieldOpt = allFields.stream()
 					.filter(ReflectiveUtils::isTableField)
 					.filter(field -> field.isAnnotationPresent(TenantId.class))
